@@ -68,48 +68,49 @@ export const VOLUME = [
   ['Calves', '4', 'C, E'],
 ];
 
-// [when, meal, kcal, P, C, F] — per person, because breakfasts differ.
-const LUNCH = ['12:00', 'Lunch tub (peri chicken from the Sunday cook / katsu from the Wednesday cook)', '843–868', '47–62', '97–124', '10–31'];
+// [when, meal, kcal, P, C, F] per person, because breakfasts differ.
+// 'lunch' and 'dinner' are filled in from this week's meal plan (see COOKS below).
 const SNACK = ['15:00', 'Pre-gym: bagel + 25 g peanut butter', 380, 15, 48, 14];
-const DINNER = ['19:00', 'Dinner tub (Big Mac bowl / doner)', '790–846', '48–52', '58–80', '34–40'];
 const YOG = ['21:30', '200 g 0% Greek yoghurt + 40 g granola', 294, 24, 32, 7];
 
 export const MEALS = {
-  tom: {
-    rows: [
-      ['8:00', 'Mass oats: 100 g oats, 250 ml whole milk, 20 g PB, banana, 15 g honey', 812, 28, 111, 27],
-      LUNCH, SNACK, DINNER, YOG,
-      ['Evening', 'Shake: 400 ml whole milk + 30 g whey', 376, 37, 21, 16],
-    ],
-    total: ['3,520–3,550', '199–218', '367–416', '108–135'],
-  },
-  joe: {
-    rows: [
-      ['8:00', 'Bacon baps: 2 white baps, 6 rashers back bacon, 20 g brown sauce or ketchup, 200 ml orange juice', 797, 42, 82, 34],
-      LUNCH, SNACK, DINNER, YOG,
-    ],
-    total: ['3,130–3,160', '176–195', '317–366', '99–126'],
-  },
+  tom: [
+    ['8:00', 'Mass oats: 100 g oats, 250 ml whole milk, 20 g PB, banana, 15 g honey', 812, 28, 111, 27],
+    ['12:00', 'lunch'], SNACK, ['19:00', 'dinner'], YOG,
+    ['Evening', 'Shake: 400 ml whole milk + 30 g whey', 376, 37, 21, 16],
+  ],
+  joe: [
+    ['8:00', 'Bacon baps: 2 white baps, 6 rashers back bacon, 20 g brown sauce or ketchup, 200 ml orange juice', 797, 42, 82, 34],
+    ['12:00', 'lunch'], SNACK, ['19:00', 'dinner'], YOG,
+  ],
 };
 
+// Two batch cooks a week. Tubs needed = days covered × 2 people.
+export const COOKS = {
+  sun: { name: 'Sunday cook', covers: 'Mon–Wed', tubs: 6 },
+  wed: { name: 'Wednesday cook', covers: 'Thu–Sun', tubs: 8 },
+};
+export const DEFAULT_PLAN = { sun: { lunch: 'peri', dinner: 'bigmac' }, wed: { lunch: 'katsu', dinner: 'doner' } };
+
+// Starter recipes. The live library is in Supabase (seeded from supabase/schema.sql) and edited in the app;
+// these are only used when no database is connected. m = [kcal, P, C, F] per tub.
 export const RECIPES = [
-  { t: 'Peri chicken & spicy rice', when: 'Sunday cook · 6 tubs · lunches for 3 days', m: [868, 47, 97, 31],
+  { id: 'peri', t: 'Peri chicken & spicy rice', tubs: 6, m: [868, 47, 97, 31],
     ing: ['1.2 kg boneless skinless chicken thighs', '2 tbsp peri-peri seasoning (or 1 tbsp smoked paprika, 1 tsp chilli flakes, 1 tsp garlic granules, 1 tsp oregano), juice of 1 lemon, 1 tbsp oil, salt', '660 g rice, 1 tsp turmeric, 1 tsp paprika, 1 chicken stock cube', '480 g frozen peas & sweetcorn', 'Peri mayo: 120 g light mayo + 1 tsp peri seasoning + squeeze of lemon'],
     steps: ['Toss the thighs in the seasoning, lemon and oil. Leave 20 min, or overnight if you remember.', 'Air fry at 200°C for 18–22 min, flipping halfway, until 75°C inside. Do it in two batches.', 'Boil the rice with turmeric, paprika and the stock cube. Stir the peas and sweetcorn in for the last 3 min.', "Split into 6 tubs: about 200 g raw-weight chicken each. Mayo goes in little pots so the rice doesn't go soggy."] },
-  { t: 'Big Mac bowl', when: 'Sunday cook · 6 tubs · dinners for 3 days', m: [790, 48, 58, 40],
+  { id: 'bigmac', t: 'Big Mac bowl', tubs: 6, m: [790, 48, 58, 40],
     ing: ['1.08 kg 12% beef mince', '1.8 kg potatoes, cubed, 2 tbsp oil, salt, garlic granules', '1 onion, finely diced', '150 g mature cheddar, grated', '1 iceberg lettuce, gherkins', 'Sauce: 90 g light mayo, 30 g ketchup, 1 tbsp mustard, 3 chopped gherkins + a splash of the jar vinegar'],
     steps: ['Air fry the potatoes at 200°C for 20–25 min, shaking twice. Do it in batches.', "Brown the mince hard with the onion, salt and black pepper. Drain off a little fat if it's swimming.", 'Tub it up: potatoes, mince, cheese on top. Lettuce, gherkins and sauce go in a separate pot.', 'Reheat until piping hot, then add the cold lettuce and sauce.'] },
-  { t: 'Chicken katsu curry', when: 'Wednesday cook · 8 tubs · lunches for 4 days', m: [843, 62, 124, 10],
+  { id: 'katsu', t: 'Chicken katsu curry', tubs: 8, m: [843, 62, 124, 10],
     ing: ['1.6 kg chicken breast, butterflied and flattened', '240 g panko, 2 eggs beaten, oil spray', '800 g rice', 'Sauce: 2 onions + 2 carrots diced, 3 tbsp mild curry powder, 1 tsp garlic granules, 1 tsp ginger, 80 g plain flour, 1 L chicken stock, 2 tbsp soy, 80 g honey'],
     steps: ['Dip the chicken in egg, then panko. Spray with oil. Air fry at 200°C for 12–15 min until 75°C inside.', 'Soften the onion and carrot for 8 min. Stir in the spices and flour for 1 min, then whisk in stock, soy and honey. Simmer 15 min and blitz with the hand blender.', 'Cook the rice. Tub the rice and sliced chicken, with sauce in a separate pot so the coating stays crisp.', "If you're at home, reheat the chicken in the air fryer at 180°C for 5 min."] },
-  { t: 'Doner kebab & chips', when: 'Wednesday cook · 8 tubs · dinners for 4 days', m: [846, 52, 80, 34],
+  { id: 'doner', t: 'Doner kebab & chips', tubs: 8, m: [846, 52, 80, 34],
     ing: ['1.44 kg 12% beef mince (swap some for lamb if it\'s cheap)', '1 onion grated and squeezed dry, 2 tsp each garlic granules, cumin, coriander, smoked paprika, salt; 1 tsp oregano, 1 tsp black pepper', '2 kg potatoes cut into chips, 2 tbsp oil', '8 large wraps', 'Garlic sauce: 480 g 0% Greek yoghurt, 80 g light mayo, 2 grated garlic cloves, lemon, dried mint, salt', 'Lettuce, red onion, chilli sauce if you want it'],
     steps: ["Mix the mince and spices and knead for 5 min until it's sticky and paste-like. That's what gives it the doner texture.", 'Press into two loaf tins or tight foil logs. Bake at 180°C for 60–70 min until 75°C inside. Rest it, then slice as thin as you can.', 'Chips: air fry at 200°C for 20–25 min in batches.', 'To eat, crisp the doner slices in the air fryer at 200°C for 4–5 min, then load a wrap with salad and garlic sauce, chips on the side.'] },
 ];
 
+// The cook lists are built from the week's meal plan; these are the fixed weekly staples.
 export const SHOP = [
-  { t: 'Sunday cook (both of you, 3 days)', items: ['Chicken thighs, boneless skinless – 1.2 kg (~£6)', 'Beef mince 12% – 1.1 kg (~£7)', 'Rice – 660 g', 'Potatoes – 1.8 kg', 'Frozen peas & sweetcorn – 480 g', 'Mature cheddar – 150 g', 'Light mayo – 210 g (one jar does the week)', 'Ketchup, mustard, gherkins', 'Iceberg lettuce, 1 onion, 1 lemon', 'Peri-peri seasoning, turmeric, paprika, stock cubes'] },
-  { t: 'Wednesday cook (both of you, 4 days)', items: ['Chicken breast – 1.6 kg (~£10)', 'Beef mince 12% – 1.45 kg (~£9.50)', 'Rice – 800 g', 'Potatoes – 2 kg', 'Panko – 240 g, 2 eggs, plain flour 80 g', '3 onions, 1 red onion, 2 carrots, garlic', 'Mild curry powder, cumin, coriander, ginger, soy, honey', 'Large wraps – 8', '0% Greek yoghurt – 480 g (garlic sauce)', 'Lettuce, lemon, chilli sauce'] },
   { t: 'Tom’s staples (per week)', items: ['Oats – 700 g', 'Whole milk – 4.5 L (breakfast + shake)', 'Bananas – 7', 'Honey – a squeezy bottle lasts ~3 weeks', 'Peanut butter – 315 g', 'Bagels – 7', '0% Greek yoghurt – 1.4 kg', 'Granola – 280 g', 'Whey – 210 g (7 scoops)', 'Creatine – 5 g/day'] },
   { t: 'Joe’s staples (per week)', items: ['White baps – 14', 'Smoked back bacon – 42 rashers (~1.3 kg)', 'Orange juice – 1.4 L', 'Brown sauce or ketchup', 'Peanut butter – 175 g', 'Bagels – 7', '0% Greek yoghurt – 1.4 kg', 'Granola – 280 g', 'Creatine – 5 g/day'] },
 ];

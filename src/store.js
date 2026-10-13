@@ -46,3 +46,50 @@ export async function saveRow(pin, row) {
   }
   await rpc('save_checkin', { p_pin: pin, p_row: row });
 }
+
+/* ---------- meal library, weekly plan, shared settings ---------- */
+const LOCAL_APP = 'lb.appdata';
+
+function localApp(defaults) {
+  const a = local.get(LOCAL_APP, null);
+  return a || { recipes: defaults, plan: [], settings: {} };
+}
+
+// Returns { recipes: [{id, t, tubs, m, ing, steps}], plan: [{week, cook, slot, recipe_id}], settings: {} }
+export async function loadApp(pin, defaults) {
+  if (!sb) return localApp(defaults);
+  const data = await rpc('get_app_data', { p_pin: pin });
+  return { recipes: data.recipes, plan: data.plan, settings: data.settings || {} };
+}
+
+function editLocal(defaults, fn) { const a = localApp(defaults); fn(a); local.set(LOCAL_APP, a); }
+
+export async function saveRecipe(pin, recipe, defaults) {
+  if (!sb) {
+    editLocal(defaults, (a) => { const i = a.recipes.findIndex((r) => r.id === recipe.id); if (i >= 0) a.recipes[i] = recipe; else a.recipes.push(recipe); });
+    return;
+  }
+  const { id, ...data } = recipe;
+  await rpc('save_recipe', { p_pin: pin, p_id: id, p_data: data });
+}
+
+export async function deleteRecipe(pin, id, defaults) {
+  if (!sb) {
+    editLocal(defaults, (a) => { a.recipes = a.recipes.filter((r) => r.id !== id); a.plan = a.plan.filter((p) => p.recipe_id !== id); });
+    return;
+  }
+  await rpc('delete_recipe', { p_pin: pin, p_id: id });
+}
+
+export async function setPlan(pin, row, defaults) {
+  if (!sb) {
+    editLocal(defaults, (a) => { a.plan = a.plan.filter((p) => !(p.week === row.week && p.cook === row.cook && p.slot === row.slot)); a.plan.push(row); });
+    return;
+  }
+  await rpc('set_plan', { p_pin: pin, p_week: row.week, p_cook: row.cook, p_slot: row.slot, p_recipe_id: row.recipe_id });
+}
+
+export async function saveSettings(pin, settings, defaults) {
+  if (!sb) { editLocal(defaults, (a) => { a.settings = settings; }); return; }
+  await rpc('save_settings', { p_pin: pin, p_data: settings });
+}
