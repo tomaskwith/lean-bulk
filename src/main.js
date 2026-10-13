@@ -18,10 +18,25 @@ const fmtDay = (d) => `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'shor
 let pin = local.get('lb.pin', '');
 let who = local.get('lb.who', 'tom');
 let entries = {};
-let app = local.get('lb.appcache', null) || { recipes: RECIPES, plan: [], settings: {} };
+// Recipes and settings come from the shared database, so coerce them into a known shape before rendering.
+const toNum = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+const strList = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []);
+const normRecipe = (r) => ({
+  id: String(r.id), t: String(r.t ?? 'Untitled'), tubs: Math.max(1, Math.round(toNum(r.tubs)) || 1),
+  m: [0, 1, 2, 3].map((i) => Math.round(toNum(Array.isArray(r.m) ? r.m[i] : 0))), ing: strList(r.ing), steps: strList(r.steps),
+});
+const normApp = (a) => ({
+  recipes: (Array.isArray(a && a.recipes) ? a.recipes : []).filter((r) => r && r.id).map(normRecipe),
+  plan: Array.isArray(a && a.plan) ? a.plan : [],
+  settings: a && a.settings && typeof a.settings === 'object' ? a.settings : {},
+});
+let app = normApp(local.get('lb.appcache', null) || { recipes: RECIPES });
 const key = (p, d) => `${p}_${d}`;
 const trainedOn = (d) => !!(d && d.session && d.session !== 'rest' && d.sets && Object.keys(d.sets).length);
-const target = (p) => ({ ...PEOPLE[p], ...((app.settings.targets || {})[p] || {}) });
+function target(p) {
+  const o = ((app.settings.targets || {})[p]) || {}; const ok = (x) => Number.isFinite(Number(x)) && Number(x) > 0;
+  return { ...PEOPLE[p], kcal: ok(o.kcal) ? Math.round(o.kcal) : PEOPLE[p].kcal, protein: ok(o.protein) ? Math.round(o.protein) : PEOPLE[p].protein };
+}
 
 function errText(e) {
   if (e.code === 'bad_pin' || e.code === 'locked') { local.del('lb.pin'); return 'The PIN has changed. Reload and enter the new one.'; }
@@ -56,9 +71,11 @@ $('#signOut').addEventListener('click', () => { local.del('lb.pin'); location.re
 
 /* ---------- tabs ---------- */
 const TABS = ['checkin', 'board', 'training', 'food', 'shop', 'settings'];
+let curTab = 'checkin', prevTab = 'checkin';
 function showTab(name) {
   if (name === 'why') name = 'training';
   if (!TABS.includes(name)) name = 'checkin';
+  if (name !== curTab) { prevTab = curTab; curTab = name; }
   $$('nav.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   $('#settingsBtn').setAttribute('aria-pressed', String(name === 'settings'));
   $$('section.panel').forEach((p) => { p.hidden = p.id !== 'tab-' + name; });
@@ -66,7 +83,7 @@ function showTab(name) {
   window.scrollTo(0, 0);
 }
 $$('nav.tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-$('#settingsBtn').addEventListener('click', () => showTab(local.get('lb.tab') === 'settings' ? 'checkin' : 'settings'));
+$('#settingsBtn').addEventListener('click', () => showTab(curTab === 'settings' ? (prevTab === 'settings' ? 'checkin' : prevTab) : 'settings'));
 
 /* ---------- training (static) ---------- */
 function renderStatic() {
@@ -93,6 +110,7 @@ const defaultPlanWeek = () => { const d = new Date(); return mondayOf((d.getDay(
 let planWeek = defaultPlanWeek();
 
 // Each cook/slot uses the latest pick made for this week or any week before it.
+// A pick of null (its recipe was deleted) means "pick a meal".
 function planFor(week) {
   const out = { sun: { ...DEFAULT_PLAN.sun }, wed: { ...DEFAULT_PLAN.wed } };
   for (const cook of Object.keys(COOKS)) for (const slot of SLOTS) {
@@ -131,7 +149,7 @@ $('#planCooks').addEventListener('change', async (e) => {
   try {
     await setPlan(pin, row, RECIPES);
     app.plan = app.plan.filter((p) => !(p.week === row.week && p.cook === row.cook && p.slot === row.slot)).concat(row);
-    cacheApp(); st.className = 'status ok'; st.textContent = 'Saved.';
+    noteWrite(); cacheApp(); st.className = 'status ok'; st.textContent = 'Saved.';
     renderFood(); renderShop();
   } catch (err) { st.className = 'status err'; st.textContent = errText(err); renderPlan(); }
   finally { sel.disabled = false; }
@@ -152,9 +170,14 @@ function dayRows(p) {
     return { when, name: `${label}: ${rs.map((r) => r.t).join(' / ')}`, lo: [0, 1, 2, 3].map((i) => col(i, Math.min)), hi: [0, 1, 2, 3].map((i) => col(i, Math.max)) };
   });
 }
+// A real day's lunch and dinner both come from the same cook, so total each cook's day and take the range of those.
 function dayTotal(p) {
-  const rows = dayRows(p); const sum = (k, i) => rows.reduce((a, r) => a + (Number(r[k][i]) || 0), 0);
-  return { lo: [0, 1, 2, 3].map((i) => sum('lo', i)), hi: [0, 1, 2, 3].map((i) => sum('hi', i)) };
+  const plan = planFor(iso(planWeek));
+  const days = Object.keys(COOKS).map((c) => MEALS[p].reduce((acc, [, what, ...m]) => {
+    const add = SLOTS.includes(what) ? (recipeById(plan[c][what]) || { m: [0, 0, 0, 0] }).m : m;
+    return acc.map((x, i) => x + (Number(add[i]) || 0));
+  }, [0, 0, 0, 0]));
+  return { lo: [0, 1, 2, 3].map((i) => Math.min(...days.map((d) => d[i]))), hi: [0, 1, 2, 3].map((i) => Math.max(...days.map((d) => d[i]))) };
 }
 function renderMeals(p) {
   mealWho = p;
@@ -208,6 +231,7 @@ function openRecipe(r) {
   if (!r) $('#rName').focus();
 }
 const closeRecipe = () => { dlg.close(); editing = null; };
+dlg.addEventListener('close', () => { editing = null; flushPending(); });
 $('#rClose').addEventListener('click', closeRecipe);
 $('#rCancel').addEventListener('click', closeRecipe);
 
@@ -224,14 +248,15 @@ $('#recipeForm').addEventListener('submit', async (e) => {
   if (!t) return bad('Give it a name.');
   if (Number.isNaN(tubs)) return bad('Tubs should be between 1 and 30.');
   if (m.some(Number.isNaN)) return bad('Fill in kcal and protein per tub (carbs and fat are optional).');
-  const recipe = { id: editing ? editing.id : slug(t), t, tubs, m, ing: lines($('#rIng').value, 40, 200), steps: lines($('#rSteps').value, 30, 500) };
+  const recipe = { id: editing ? editing.id : slug(t), t, tubs, m, ing: lines($('#rIng').value, 40, 200), steps: lines($('#rSteps').value, 30, 400) };
   $('#rSave').disabled = true; st.className = 'status'; st.textContent = 'Saving…';
   try {
     await saveRecipe(pin, recipe, RECIPES);
     const i = app.recipes.findIndex((x) => x.id === recipe.id);
+    // (recipe is already normalised: built from validated form fields)
     if (i >= 0) app.recipes[i] = recipe; else app.recipes.push(recipe);
-    cacheApp(); closeRecipe(); renderFood(); renderShop();
-  } catch (err) { bad(errText(err)); }
+    noteWrite(); cacheApp(); closeRecipe(); renderFood(); renderShop();
+  } catch (err) { bad(err.code === 'invalid' ? "Couldn't save that. Check the numbers, and keep each line fairly short." : errText(err)); }
   finally { $('#rSave').disabled = false; }
 });
 
@@ -241,8 +266,8 @@ $('#rDelete').addEventListener('click', async () => {
   try {
     await deleteRecipe(pin, id, RECIPES);
     app.recipes = app.recipes.filter((r) => r.id !== id);
-    app.plan = app.plan.filter((p) => p.recipe_id !== id);
-    cacheApp(); closeRecipe(); renderFood(); renderShop();
+    app.plan = app.plan.map((p) => (p.recipe_id === id ? { ...p, recipe_id: null } : p));
+    noteWrite(); cacheApp(); closeRecipe(); renderFood(); renderShop();
   } catch (err) { $('#rStatus').className = 'status err'; $('#rStatus').textContent = errText(err); }
 });
 
@@ -253,8 +278,8 @@ function renderShop() {
   $('#shopWeek').textContent = `For the week starting ${fmtDay(planWeek)}.`;
   const item = (id, text) => `<li><label for="${id}"><input type="checkbox" id="${id}" data-k="${id}" ${ticks[id] ? 'checked' : ''}><span>${esc(text)}</span></label></li>`;
   const cooks = Object.entries(COOKS).map(([cook, c]) => {
-    const rs = SLOTS.map((s) => recipeById(plan[cook][s])).filter(Boolean);
-    const body = rs.length ? rs.map((r) => `<h4>${esc(r.t)}</h4>${tubWarning(r, cook)}<ul class="list shop">${(r.ing || []).map((x, i) => item(`${wk}|${cook}|${r.id}|${i}`, x)).join('') || '<li class="muted">No ingredients listed for this meal yet.</li>'}</ul>`).join('')
+    const rs = SLOTS.map((slot) => [slot, recipeById(plan[cook][slot])]).filter(([, r]) => r);
+    const body = rs.length ? rs.map(([slot, r]) => `<h4>${esc(r.t)} <span class="muted small">(${slot})</span></h4>${tubWarning(r, cook)}<ul class="list shop">${r.ing.map((x, i) => item(`${wk}|${cook}|${slot}|${r.id}|${i}`, x)).join('') || '<li class="muted">No ingredients listed for this meal yet.</li>'}</ul>`).join('')
       : '<p class="muted small">No meals picked for this cook.</p>';
     return `<div class="card"><h3 style="margin-bottom:4px">${c.name}</h3><p class="small muted" style="margin:0">Eaten ${c.covers}, both of you</p>${body}</div>`;
   }).join('');
@@ -285,9 +310,9 @@ $('#tgtForm').addEventListener('submit', async (e) => {
   $('#tgtSave').disabled = true; st.className = 'status'; st.textContent = 'Saving…';
   try {
     await saveSettings(pin, settings, RECIPES);
-    app.settings = settings; cacheApp();
+    app.settings = settings; noteWrite(); cacheApp();
     st.className = 'status ok'; st.textContent = 'Saved.';
-    fillForm(); renderFood(); renderLive();
+    renderTargetsLine(); renderFood(); renderLive();
   } catch (err) { st.className = 'status err'; st.textContent = errText(err); }
   finally { $('#tgtSave').disabled = false; }
 });
@@ -355,11 +380,15 @@ $('#exLog').addEventListener('click', (e) => {
   });
 });
 
+function renderTargetsLine() { const p = target(who); $('#targetsLine').textContent = `${p.name}: ${p.kcal} kcal · ${p.protein} g P`; }
+
+let formDirty = false;
+$('#ciForm').addEventListener('input', () => { formDirty = true; });
 function fillForm() {
+  formDirty = false;
   const date = $('#ciDate').value; const d = entries[key(who, date)];
   $$('[data-who]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.who === who)));
-  const p = target(who);
-  $('#targetsLine').textContent = `${p.name}: ${p.kcal} kcal · ${p.protein} g P`;
+  renderTargetsLine();
   $('#ciSession').value = d && d.session ? d.session : nextSession(who, date);
   $('#ciWeight').value = d && d.weight != null ? d.weight : '';
   $('#ciKcal').value = d && d.kcal != null ? d.kcal : '';
@@ -401,7 +430,7 @@ $('#ciForm').addEventListener('submit', async (ev) => {
   $('#ciSave').disabled = true; status('Saving…');
   try {
     await saveRow(pin, body);
-    entries[key(who, date)] = body;
+    entries[key(who, date)] = body; noteWrite(); formDirty = false;
     const pts = dayPoints(body);
     status(`Saved. ${pts} point${pts === 1 ? '' : 's'} for ${PEOPLE[who].name} today.`, 'ok');
     renderLive();
@@ -575,21 +604,48 @@ function renderLive() { renderBoard(); renderStreaks(); renderLedger(); renderTo
 /* ---------- boot ---------- */
 function cacheApp() { if (shared) local.set('lb.appcache', app); }
 
+// Key-order-independent comparison: the database returns JSON keys in its own order.
+const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]`
+  : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+
+// A refresh that started before a save finished would bring back the old data, so ignore it.
+let writes = 0;
+const noteWrite = () => { writes++; };
+
+// Don't redraw meals or settings under someone who's mid-edit; catch up when they finish.
+let pending = false;
+const editing_ = () => dlg.open || $('#planCooks').contains(document.activeElement) || $('#tgtForm').contains(document.activeElement);
+function flushPending() { if (pending && !editing_()) { pending = false; renderFood(); renderShop(); renderSettings(); renderTargetsLine(); } }
+$('#planCooks').addEventListener('focusout', () => setTimeout(flushPending, 0));
+$('#tgtForm').addEventListener('focusout', () => setTimeout(flushPending, 0));
+
 async function refresh(refill) {
+  const startWrites = writes;
   const [e, a] = await Promise.allSettled([loadAll(pin), loadApp(pin, RECIPES)]);
-  if (e.status === 'fulfilled') { entries = e.value; $('#storeBanner').hidden = true; }
+  const stale = writes !== startWrites;
+  if (e.status === 'fulfilled') { if (!stale) entries = e.value; $('#storeBanner').hidden = true; }
   else {
     if (e.reason && e.reason.code === 'bad_pin') { local.del('lb.pin'); location.reload(); return; }
     const b = $('#storeBanner'); b.textContent = "Can't reach the shared log right now. Showing what was last loaded."; b.hidden = false;
   }
-  if (a.status === 'fulfilled') {
-    const changed = JSON.stringify(a.value) !== JSON.stringify(app);
-    app = a.value; cacheApp();
-    // Don't redraw the food tab under someone who's mid-edit.
-    if (changed && !dlg.open && !$('#planCooks').contains(document.activeElement)) { renderFood(); renderShop(); renderSettings(); }
+  if (a.status === 'fulfilled' && !stale) {
+    const next = normApp(a.value);
+    if (canon(next) !== canon(app)) { app = next; cacheApp(); pending = true; }
+    flushPending();
   }
-  if (refill) fillForm();
+  if (refill && !formDirty) fillForm();
+  else renderTargetsLine();
   renderLive();
+}
+
+// An installed home-screen app can be resumed days later, so move "today" on when the date changes.
+let bootDay = todayISO();
+function rollDay() {
+  const t = todayISO(); if (t === bootDay) return;
+  const wasToday = $('#ciDate').value === bootDay; bootDay = t;
+  if (wasToday && !formDirty) { $('#ciDate').value = t; fillForm(); }
+  planWeek = defaultPlanWeek(); weekStart = mondayOf(new Date());
+  renderFood(); renderShop(); renderLive();
 }
 
 let started = false;
@@ -603,8 +659,9 @@ function startApp() {
   if (!shared) { const b = $('#storeBanner'); b.textContent = 'No database connected, so check-ins save on this phone only. See the README to hook up Supabase.'; b.hidden = false; }
   fillForm(); renderLive();
   refresh(true);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') rollDay(); });
   if (shared) {
-    setInterval(() => { if (document.visibilityState === 'visible') refresh(false); }, 30000);
+    setInterval(() => { if (document.visibilityState === 'visible') { rollDay(); refresh(false); } }, 30000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(false); });
   }
 }

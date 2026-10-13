@@ -128,7 +128,7 @@ dialog{width:min(100% - 24px,560px);max-height:calc(100dvh - 24px);border:1px so
 dialog::backdrop{background:rgb(0 0 0 / .55)}
 .dlghead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .dlgactions{margin-top:14px;position:sticky;bottom:-16px;background:var(--surface);padding-block:10px}
-@media (max-width:600px){dialog{width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border-radius:0;border:0;padding-top:calc(16px + env(safe-area-inset-top,0px))}}
+@media (max-width:600px){dialog{width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border-radius:0;border:0;padding-top:calc(16px + env(safe-area-inset-top,0px))}.dlgactions{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}}
 details{border-top:1px solid var(--line);padding-block:10px}
 details:first-of-type{border-top:0}
 #why details{border-top:0;padding-block:0}

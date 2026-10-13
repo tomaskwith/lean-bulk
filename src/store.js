@@ -75,7 +75,7 @@ export async function saveRecipe(pin, recipe, defaults) {
 
 export async function deleteRecipe(pin, id, defaults) {
   if (!sb) {
-    editLocal(defaults, (a) => { a.recipes = a.recipes.filter((r) => r.id !== id); a.plan = a.plan.filter((p) => p.recipe_id !== id); });
+    editLocal(defaults, (a) => { a.recipes = a.recipes.filter((r) => r.id !== id); a.plan = a.plan.map((p) => (p.recipe_id === id ? { ...p, recipe_id: null } : p)); });
     return;
   }
   await rpc('delete_recipe', { p_pin: pin, p_id: id });

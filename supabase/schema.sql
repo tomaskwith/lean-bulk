@@ -141,17 +141,18 @@ grant execute on function public.save_checkin(text, jsonb)  to anon;
 --                              "ing": [lines], "steps": [lines]}
 create table if not exists public.recipes (
   id         text        primary key check (id ~ '^[a-z0-9-]{1,64}$'),
-  data       jsonb       not null check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 20000),
+  data       jsonb       not null check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 40000),
   updated_at timestamptz not null default now()
 );
 
 -- Which recipe goes in which cook. week = the Monday the food is eaten from.
--- A week with no rows uses the most recent earlier week's picks.
+-- A week with no rows uses the most recent earlier week's picks. recipe_id is null when
+-- the picked recipe was deleted, so the slot shows "pick a meal" instead of an old pick.
 create table if not exists public.meal_plan (
   week      date not null,
   cook      text not null check (cook in ('sun', 'wed')),
   slot      text not null check (slot in ('lunch', 'dinner')),
-  recipe_id text not null references public.recipes(id) on delete cascade,
+  recipe_id text references public.recipes(id) on delete set null,
   primary key (week, cook, slot)
 );
 
@@ -161,10 +162,74 @@ create table if not exists public.app_settings (
   data jsonb not null default '{}'::jsonb check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 5000)
 );
 
+-- Upgrades for databases created before these limits changed.
+alter table public.recipes drop constraint if exists recipes_data_check;
+alter table public.recipes add constraint recipes_data_check
+  check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 40000);
+alter table public.meal_plan alter column recipe_id drop not null;
+alter table public.meal_plan drop constraint if exists meal_plan_recipe_id_fkey;
+alter table public.meal_plan add constraint meal_plan_recipe_id_fkey
+  foreign key (recipe_id) references public.recipes(id) on delete set null;
+
 alter table public.recipes      enable row level security;
 alter table public.meal_plan    enable row level security;
 alter table public.app_settings enable row level security;
 revoke all on public.recipes, public.meal_plan, public.app_settings from anon, authenticated;
+
+-- Internal: returns a clean copy of a recipe, or null if anything is the wrong shape.
+create or replace function public._clean_recipe(p jsonb)
+returns jsonb
+language plpgsql
+immutable
+set search_path = public
+as $$
+declare
+  v_t text;
+  v_ing jsonb := coalesce(p->'ing', '[]'::jsonb);
+  v_steps jsonb := coalesce(p->'steps', '[]'::jsonb);
+begin
+  if jsonb_typeof(p) is distinct from 'object' then return null; end if;
+  v_t := trim(p->>'t');
+  if coalesce(char_length(v_t), 0) not between 1 and 80 then return null; end if;
+  if jsonb_typeof(p->'tubs') is distinct from 'number' then return null; end if;
+  if (p->>'tubs')::numeric not between 1 and 30 then return null; end if;
+  if jsonb_typeof(p->'m') is distinct from 'array' or jsonb_array_length(p->'m') <> 4 then return null; end if;
+  if exists (select 1 from jsonb_array_elements(p->'m') x where jsonb_typeof(x) <> 'number') then return null; end if;
+  if exists (select 1 from jsonb_array_elements_text(p->'m') x where x::numeric not between 0 and 3000) then return null; end if;
+  if jsonb_typeof(v_ing) <> 'array' or jsonb_typeof(v_steps) <> 'array' then return null; end if;
+  if jsonb_array_length(v_ing) > 40 or jsonb_array_length(v_steps) > 30 then return null; end if;
+  if exists (select 1 from jsonb_array_elements(v_ing || v_steps) x where jsonb_typeof(x) <> 'string') then return null; end if;
+  if exists (select 1 from jsonb_array_elements_text(v_ing) x where char_length(x) > 200) then return null; end if;
+  if exists (select 1 from jsonb_array_elements_text(v_steps) x where char_length(x) > 500) then return null; end if;
+  return jsonb_build_object('t', v_t, 'tubs', round((p->>'tubs')::numeric), 'm', p->'m', 'ing', v_ing, 'steps', v_steps);
+end;
+$$;
+revoke all on function public._clean_recipe(jsonb) from public, anon, authenticated;
+
+-- Internal: settings must be {"targets": {"tom": {"kcal", "protein"}, "joe": {...}}} with sane numbers.
+create or replace function public._clean_settings(p jsonb)
+returns jsonb
+language plpgsql
+immutable
+set search_path = public
+as $$
+declare
+  v_person text;
+  v_k jsonb;
+  v_p jsonb;
+  v_out jsonb := '{}'::jsonb;
+begin
+  foreach v_person in array array['tom', 'joe'] loop
+    v_k := p->'targets'->v_person->'kcal';
+    v_p := p->'targets'->v_person->'protein';
+    if jsonb_typeof(v_k) is distinct from 'number' or jsonb_typeof(v_p) is distinct from 'number' then return null; end if;
+    if v_k::text::numeric not between 1500 and 6000 or v_p::text::numeric not between 50 and 400 then return null; end if;
+    v_out := v_out || jsonb_build_object(v_person, jsonb_build_object('kcal', round(v_k::text::numeric), 'protein', round(v_p::text::numeric)));
+  end loop;
+  return jsonb_build_object('targets', v_out);
+end;
+$$;
+revoke all on function public._clean_settings(jsonb) from public, anon, authenticated;
 
 create or replace function public.get_app_data(p_pin text)
 returns jsonb
@@ -192,15 +257,17 @@ language plpgsql
 security definer
 set search_path = public, extensions
 as $$
-declare s text := _pin_status(p_pin);
+declare
+  s text := _pin_status(p_pin);
+  v_data jsonb := _clean_recipe(p_data);
 begin
   if s <> 'ok' then
     return jsonb_build_object('ok', false, 'error', s);
   end if;
-  if coalesce(char_length(trim(p_data->>'t')), 0) not between 1 and 80 then
+  if v_data is null then
     return jsonb_build_object('ok', false, 'error', 'invalid');
   end if;
-  insert into recipes (id, data, updated_at) values (p_id, p_data - 'id', now())
+  insert into recipes (id, data, updated_at) values (p_id, v_data, now())
   on conflict (id) do update set data = excluded.data, updated_at = now();
   return jsonb_build_object('ok', true);
 exception
@@ -251,12 +318,17 @@ language plpgsql
 security definer
 set search_path = public, extensions
 as $$
-declare s text := _pin_status(p_pin);
+declare
+  s text := _pin_status(p_pin);
+  v_data jsonb := _clean_settings(p_data);
 begin
   if s <> 'ok' then
     return jsonb_build_object('ok', false, 'error', s);
   end if;
-  insert into app_settings (id, data) values (1, p_data)
+  if v_data is null then
+    return jsonb_build_object('ok', false, 'error', 'invalid');
+  end if;
+  insert into app_settings (id, data) values (1, v_data)
   on conflict (id) do update set data = excluded.data;
   return jsonb_build_object('ok', true);
 exception
@@ -271,11 +343,13 @@ grant execute on function public.delete_recipe(text, text)              to anon;
 grant execute on function public.set_plan(text, date, text, text, text) to anon;
 grant execute on function public.save_settings(text, jsonb)             to anon;
 
--- Starter recipes (only added if they're not there already).
-insert into public.recipes (id, data) values
+-- Starter recipes, only added to a brand-new empty library (so deleted ones don't come back).
+insert into public.recipes (id, data)
+select v.id, v.data from (values
   ('peri', $json${"t":"Peri chicken & spicy rice","tubs":6,"m":[868,47,97,31],"ing":["1.2 kg boneless skinless chicken thighs","2 tbsp peri-peri seasoning (or 1 tbsp smoked paprika, 1 tsp chilli flakes, 1 tsp garlic granules, 1 tsp oregano), juice of 1 lemon, 1 tbsp oil, salt","660 g rice, 1 tsp turmeric, 1 tsp paprika, 1 chicken stock cube","480 g frozen peas & sweetcorn","Peri mayo: 120 g light mayo + 1 tsp peri seasoning + squeeze of lemon"],"steps":["Toss the thighs in the seasoning, lemon and oil. Leave 20 min, or overnight if you remember.","Air fry at 200°C for 18–22 min, flipping halfway, until 75°C inside. Do it in two batches.","Boil the rice with turmeric, paprika and the stock cube. Stir the peas and sweetcorn in for the last 3 min.","Split into 6 tubs: about 200 g raw-weight chicken each. Mayo goes in little pots so the rice doesn't go soggy."]}$json$::jsonb),
   ('bigmac', $json${"t":"Big Mac bowl","tubs":6,"m":[790,48,58,40],"ing":["1.08 kg 12% beef mince","1.8 kg potatoes, cubed, 2 tbsp oil, salt, garlic granules","1 onion, finely diced","150 g mature cheddar, grated","1 iceberg lettuce, gherkins","Sauce: 90 g light mayo, 30 g ketchup, 1 tbsp mustard, 3 chopped gherkins + a splash of the jar vinegar"],"steps":["Air fry the potatoes at 200°C for 20–25 min, shaking twice. Do it in batches.","Brown the mince hard with the onion, salt and black pepper. Drain off a little fat if it's swimming.","Tub it up: potatoes, mince, cheese on top. Lettuce, gherkins and sauce go in a separate pot.","Reheat until piping hot, then add the cold lettuce and sauce."]}$json$::jsonb),
   ('katsu', $json${"t":"Chicken katsu curry","tubs":8,"m":[843,62,124,10],"ing":["1.6 kg chicken breast, butterflied and flattened","240 g panko, 2 eggs beaten, oil spray","800 g rice","Sauce: 2 onions + 2 carrots diced, 3 tbsp mild curry powder, 1 tsp garlic granules, 1 tsp ginger, 80 g plain flour, 1 L chicken stock, 2 tbsp soy, 80 g honey"],"steps":["Dip the chicken in egg, then panko. Spray with oil. Air fry at 200°C for 12–15 min until 75°C inside.","Soften the onion and carrot for 8 min. Stir in the spices and flour for 1 min, then whisk in stock, soy and honey. Simmer 15 min and blitz with the hand blender.","Cook the rice. Tub the rice and sliced chicken, with sauce in a separate pot so the coating stays crisp.","If you're at home, reheat the chicken in the air fryer at 180°C for 5 min."]}$json$::jsonb),
   ('doner', $json${"t":"Doner kebab & chips","tubs":8,"m":[846,52,80,34],"ing":["1.44 kg 12% beef mince (swap some for lamb if it's cheap)","1 onion grated and squeezed dry, 2 tsp each garlic granules, cumin, coriander, smoked paprika, salt; 1 tsp oregano, 1 tsp black pepper","2 kg potatoes cut into chips, 2 tbsp oil","8 large wraps","Garlic sauce: 480 g 0% Greek yoghurt, 80 g light mayo, 2 grated garlic cloves, lemon, dried mint, salt","Lettuce, red onion, chilli sauce if you want it"],"steps":["Mix the mince and spices and knead for 5 min until it's sticky and paste-like. That's what gives it the doner texture.","Press into two loaf tins or tight foil logs. Bake at 180°C for 60–70 min until 75°C inside. Rest it, then slice as thin as you can.","Chips: air fry at 200°C for 20–25 min in batches.","To eat, crisp the doner slices in the air fryer at 200°C for 4–5 min, then load a wrap with salad and garlic sauce, chips on the side."]}$json$::jsonb)
 
-on conflict (id) do nothing;
+) as v(id, data)
+where not exists (select 1 from public.recipes);
