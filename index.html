@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tom &amp; Joe Lean Bulk</title>
+<meta name="description" content="Our 5-session training plan, fakeaway meal prep and daily accountability check-ins.">
+<meta name="theme-color" content="#e9ecef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111316" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lean Bulk">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+<!-- PIN GATE -->
+<div class="wrap" id="gate" hidden>
+  <form class="gate card" id="gateForm" autocomplete="off">
+    <div class="eyebrow">Lean Bulk</div>
+    <h2 style="margin:0">Who's training?</h2>
+    <div class="seg" role="group" aria-label="Who are you">
+      <button type="button" data-gate-who="tom" aria-pressed="true">Tom</button>
+      <button type="button" data-gate-who="joe" aria-pressed="false">Joe</button>
+    </div>
+    <label class="f">Crew PIN<input type="password" id="gatePin" inputmode="text" autocomplete="current-password" required></label>
+    <span class="status" id="gateStatus" role="status"></span>
+    <button class="btn" type="submit" id="gateBtn">Unlock</button>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div class="eyebrow">PureGym Leicester Walnut Street · 5 sessions a week · lean bulk</div>
+    <h1>Tom <span>&amp;</span> Joe<br>Lean Bulk</h1>
+    <p class="lede">The programme, the meal prep and a shared check-in. Log every session and your macros. The board shows who's putting the work in and who isn't.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="checkin" aria-selected="true">Check in</button>
+    <button role="tab" data-tab="board" aria-selected="false">Board</button>
+    <button role="tab" data-tab="training" aria-selected="false">Training</button>
+    <button role="tab" data-tab="food" aria-selected="false">Food</button>
+    <button role="tab" data-tab="shop" aria-selected="false">Shopping</button>
+    <button role="tab" data-tab="why" aria-selected="false">Why it works</button>
+  </nav>
+
+  <!-- CHECK IN -->
+  <section class="panel" id="tab-checkin">
+    <div id="storeBanner" class="banner" hidden></div>
+    <div class="card nudge">
+      <div id="todayStatus" class="small">Loading today's check-ins…</div>
+      <button class="btn ghost" id="nudgeBtn" type="button">Copy a nudge</button>
+    </div>
+    <form class="card" id="ciForm" autocomplete="off">
+      <div class="row" style="justify-content:space-between;margin-bottom:14px">
+        <div class="seg" role="group" aria-label="Who is checking in">
+          <button type="button" data-who="tom" aria-pressed="true">Tom</button>
+          <button type="button" data-who="joe" aria-pressed="false">Joe</button>
+        </div>
+        <span id="targetsLine" class="pill"></span>
+      </div>
+      <div class="fields">
+        <label class="f">Date<input type="date" id="ciDate"></label>
+        <label class="f">Session<select id="ciSession"></select></label>
+        <label class="f">Morning weight (kg)<input type="number" id="ciWeight" inputmode="decimal" step="0.1" min="30" max="200" placeholder="e.g. 78.2"></label>
+      </div>
+      <p class="hint" id="restHint" hidden></p>
+      <div id="exBlock" style="margin-top:16px">
+        <h3 style="margin-bottom:6px">Lifts <span class="muted small" style="font-family:var(--body);text-transform:none;letter-spacing:0">kg × reps · grey = last time</span></h3>
+        <div class="exlog" id="exLog"></div>
+      </div>
+      <h3 style="margin:18px 0 8px">Food</h3>
+      <div class="fields">
+        <label class="f">Calories eaten<input type="number" id="ciKcal" inputmode="numeric" min="0" max="10000" placeholder="kcal"></label>
+        <label class="f">Protein (g)<input type="number" id="ciProtein" inputmode="numeric" min="0" max="600" placeholder="g"></label>
+      </div>
+      <div class="fields" style="margin-top:10px">
+        <label class="check"><input type="checkbox" id="ciCreatine"> Creatine 5 g</label>
+        <label class="check"><input type="checkbox" id="ciPrep"> Ate the prep</label>
+      </div>
+      <label class="f" style="margin-top:10px">Notes<textarea id="ciNotes" rows="2" maxlength="500" placeholder="PBs, how you felt, sleep…"></textarea></label>
+      <div class="row" style="margin-top:14px;justify-content:space-between">
+        <span class="status" id="ciStatus" role="status"></span>
+        <button class="btn" type="submit" id="ciSave">Save check-in</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- BOARD -->
+  <section class="panel" id="tab-board" hidden>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">Accountability board</h2>
+        <div class="row">
+          <button class="btn ghost" type="button" id="wkPrev" aria-label="Previous week">←</button>
+          <span class="mono small" id="wkLabel"></span>
+          <button class="btn ghost" type="button" id="wkNext" aria-label="Next week">→</button>
+        </div>
+      </div>
+      <div class="board" id="board"></div>
+      <div class="legend" style="margin-top:12px">
+        <span><i></i>top-left: trained</span><span><i></i>top-right: calories hit</span><span><i></i>bottom-left: protein hit</span><span><i></i>bottom-right: creatine</span>
+      </div>
+      <p class="small muted" style="margin-top:8px">Rest whenever you like. Sessions score 1 point each up to 5 a week, and rest days never count against you. Calories, protein and creatine score daily. Max 26 a week. Red means the day has passed and it wasn't done. Loser of the week buys the chicken.</p>
+    </div>
+    <div class="card">
+      <h2>Bodyweight</h2>
+      <p class="small muted" id="bwSummary">Log your morning weight to see the trend. Aim for +0.2 to +0.4 kg a week on the 7-day average.</p>
+      <div id="bwChart"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Lift history</h2>
+        <select id="liftPick" aria-label="Exercise" style="font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);max-width:100%"></select>
+      </div>
+      <div class="table-wrap"><table id="liftTable"></table></div>
+    </div>
+  </section>
+
+  <!-- TRAINING -->
+  <section class="panel" id="tab-training" hidden>
+    <div class="card">
+      <h2>How the week runs</h2>
+      <p>Five sessions, A to E, done in order on whatever days suit you. You keep the full-body feel, but each session leans on different muscles so every set is done fresh. Legs, abs and biceps get hit most because they're the priority.</p>
+      <ul class="list small">
+        <li><b>Rest days are yours to place.</b> Two a week. Don't train more than 3 days in a row, and the app flags it if you try.</li>
+        <li><b>Missed a day?</b> Do the next session in the order. Don't skip ahead.</li>
+      </ul>
+      <div class="table-wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Muscle</th><th class="num">Hard sets / week</th><th class="num">Sessions</th></tr></thead>
+        <tbody id="volTable"></tbody>
+      </table></div>
+      <ul class="list small" style="margin-top:12px">
+        <li><b>2 working sets</b> per exercise, after 1–3 ramp-up sets on the first lift.</li>
+        <li><b>Failure rules:</b> machines, cables and isolations go to true failure. Squat, RDL, bench and hack squat stop at 1 rep in reserve (RIR).</li>
+        <li><b>Progression:</b> once you hit the top of the rep range on both sets with clean form, add weight (2.5 kg barbell, next dumbbell up) and drop back to the bottom of the range.</li>
+        <li><b>Rest between sets:</b> 2–3 min on compounds, 60–90 s on isolations. Superset abs and lateral raises with something else to save time.</li>
+        <li><b>Deload</b> every 6–8 weeks, or if your lifts drop two sessions running: one week, 1 set per exercise at about 3 RIR.</li>
+        <li>About 50–55 minutes including a 5-minute bike warm-up.</li>
+      </ul>
+    </div>
+    <div class="banner small"><b>Kit check.</b> PureGym's Walnut Street page lists an upgrade "coming soon": a 6-bay lifting rig, a perfect squat machine, a Smith machine, an extra functional trainer, glute machines, and a women's area with squat racks and dumbbells up to 30 kg. It doesn't publish a full machine list, so every exercise has a swap in case something isn't there or is closed off during the works.</div>
+    <div id="sessions" style="display:flex;flex-direction:column;gap:14px"></div>
+  </section>
+
+  <!-- FOOD -->
+  <section class="panel" id="tab-food" hidden>
+    <div class="grid2" id="targets"></div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Daily template</h2>
+        <div class="seg" role="group" aria-label="Whose day">
+          <button type="button" data-meal-who="tom" aria-pressed="true">Tom</button>
+          <button type="button" data-meal-who="joe" aria-pressed="false">Joe</button>
+        </div>
+      </div>
+      <p class="small muted">Same structure every day. Lunch and dinner come out of the prep tubs: the Sunday cook covers 3 days, the Wednesday cook covers 4.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Meal</th><th class="num">kcal</th><th class="num">P</th><th class="num">C</th><th class="num">F</th></tr></thead>
+        <tbody id="dayTable"></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Fakeaway recipes</h2>
+      <p class="small muted">Quantities make tubs for both of you. No peppers anywhere. If "no peppers" includes paprika and chilli too, leave them out and add more garlic, cumin and lemon.</p>
+      <div id="recipes"></div>
+    </div>
+    <div class="card">
+      <h2>Making it easier to eat</h2>
+      <ul class="list">
+        <li>Eat on the clock: 8am, 12pm, 3pm, 7pm, 9:30pm. Don't wait to be hungry.</li>
+        <li>Drink calories. Whole milk, orange juice and Tom's shake go down when food won't.</li>
+        <li>Keep veg as a side, not a pile. It fills you up without many calories.</li>
+        <li>If the scale hasn't moved after 2 weeks, add 150–200 kcal (an extra 30 g of peanut butter, or 40 g more rice per tub).</li>
+        <li>Food safety: cool rice and meat within an hour and keep them in the fridge. Eat the Sunday tubs within 3 days. Freeze the last 2 days of the Wednesday batch, defrost in the fridge the night before, and reheat until steaming.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Swap pool for week 2+</h2>
+      <p class="small">Keep the same meat and rice/potato weights and swap the sauce: chicken fried rice (egg, peas, soy), spag bol, sweet chilli chicken, beef teriyaki noodles, chilli con carne (no peppers, add kidney beans).</p>
+    </div>
+  </section>
+
+  <!-- SHOPPING -->
+  <section class="panel" id="tab-shop" hidden>
+    <div class="card">
+      <h2>Weekly shop</h2>
+      <p class="small muted">Prices are rough Aldi/Lidl estimates. Ticks are saved on this phone only.</p>
+      <div class="grid2" style="margin:10px 0 4px">
+        <div class="target"><span class="eyebrow">Tom / week (incl. whey)</span><span class="big mono">~£41</span></div>
+        <div class="target"><span class="eyebrow">Joe / week (bacon's the big one)</span><span class="big mono">~£42</span></div>
+      </div>
+      <p class="small muted">Creatine monohydrate is extra: about £10 for 250 g, which lasts 50 days each.</p>
+    </div>
+    <div id="shopLists" style="display:flex;flex-direction:column;gap:14px"></div>
+    <button class="btn ghost" type="button" id="shopReset" style="align-self:flex-start">Clear ticks</button>
+  </section>
+
+  <!-- WHY -->
+  <section class="panel" id="tab-why" hidden>
+    <div class="card">
+      <h2>Why this setup</h2>
+      <ul class="list">
+        <li><b>Volume over everything.</b> Muscle growth tracks weekly hard sets. Around 10–20 per muscle works well for trained lifters, so priority muscles sit at the top of that range (Schoenfeld 2017; Pelland 2024).</li>
+        <li><b>Your 2 sets to failure is fine.</b> Low-set training works if weekly volume is there. Going to failure vs. stopping 1–2 reps short gives similar growth, but failure on heavy compounds costs more fatigue, so those stop at 1 RIR (Refalo 2023; Robinson 2024).</li>
+        <li><b>Why not pure full body.</b> At equal volume, frequency barely matters once each muscle is hit twice a week (Schoenfeld 2016, 2019). Rotating the focus means the last exercise of each session isn't done exhausted.</li>
+        <li><b>Stretch bias.</b> Exercises loaded at long muscle lengths tend to grow muscle a bit better: incline and Bayesian curls, overhead triceps, RDLs, seated leg curls (Maeo 2021, 2023).</li>
+        <li><b>Long rests.</b> 2–3 minutes between hard sets gives better hypertrophy than short rests (Schoenfeld 2016; Singer 2024).</li>
+        <li><b>Protein.</b> 1.6–2.2 g/kg covers it (Morton 2018). Both of you are set at about 2 g/kg or more.</li>
+        <li><b>Rate of gain.</b> For a lean bulk aim for 0.25–0.5% of bodyweight a week, about 0.2–0.4 kg (Iraki 2019).</li>
+        <li><b>Creatine.</b> 3–5 g every day, any time, no loading needed. It's the best-supported supplement for strength and size (ISSN position stand, Kreider 2017).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>How targets were set</h2>
+      <p class="small">Mifflin-St Jeor BMR × 1.6 activity, plus a surplus. Tom: about 3,050 maintenance, so <b>3,500 kcal</b>, extra because tall, lean lifters usually burn more than the formula predicts. Joe: about 2,920 maintenance, so <b>3,150 kcal</b>. These are starting points. Adjust by the scale every 2 weeks.</p>
+    </div>
+    <p class="small"><button class="linkbtn" type="button" id="signOut">Lock this phone (forget the PIN)</button></p>
+  </section>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
